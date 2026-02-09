@@ -1,0 +1,8 @@
+{
+  "name": "Copy of InferMate",
+  "description": "Next-generation Hybrid-Intelligence Communication Platform featuring Truth Guard™ RAG engine and Neural Translation.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}

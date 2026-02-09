@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InferMate | Hybrid Intelligence</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              neuro: {
+                primary: '#4F46E5', // Indigo 600
+                secondary: '#7C3AED', // Violet 600
+                accent: '#06B6D4', // Cyan 500
+                dark: '#1E1B4B',
+                light: '#F8FAFC'
+              }
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "tesseract.js": "https://esm.sh/tesseract.js@5.1.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 min-h-screen text-slate-800 antialiased">
+    <div id="root"></div>
+  </body>
+</html>
