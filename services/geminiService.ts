@@ -8,7 +8,7 @@ const MODEL_NAME = 'gemini-3-flash-preview';
 const MAPS_MODEL = 'gemini-2.5-flash';
 const IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
-const EMBEDDING_MODEL = 'gemini-embedding-001';
+const EMBEDDING_MODEL = 'text-embedding-004';
 const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
 // --- Helper: Ensure API Key for Premium Models ---
@@ -37,6 +37,16 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Pr
     }
     throw error;
   }
+}
+
+// --- Helper: Audio Encoding ---
+function encodeAudio(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
 // --- System Prompts for Personas ---
@@ -80,6 +90,14 @@ export const startLiveSession = async (
     onTranscription: (text: string, isUser: boolean) => void,
     onError: (err: any) => void
 ) => {
+    // 1. Ensure Valid API Key for Live Session (Critical to avoid Network Error)
+    try {
+        await ensureApiKey();
+    } catch (e) {
+        onError("Failed to verify API Key. Please try again.");
+        return null;
+    }
+
     const ai = getAiClient();
     // Fixed AudioContext fallback
     const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 16000});
@@ -107,7 +125,8 @@ export const startLiveSession = async (
                     for (let i = 0; i < l; i++) {
                         int16[i] = inputData[i] * 32768;
                     }
-                    const base64Data = btoa(String.fromCharCode(...new Uint8Array(int16.buffer)));
+                    // Optimized Encoding (Avoids stack overflow from spread operator)
+                    const base64Data = encodeAudio(new Uint8Array(int16.buffer));
                     
                     sessionPromise.then((session) => {
                         session.sendRealtimeInput({
@@ -145,7 +164,7 @@ export const startLiveSession = async (
             speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
             },
-            inputAudioTranscription: {} // Corrected: Empty object instead of invalid model string
+            inputAudioTranscription: {} 
         }
     });
 
@@ -712,11 +731,12 @@ export const chatHybrid = async (
   }
 };
 
-export const speakText = async (text: string): Promise<void> => {
+export const speakText = async (text: string, rate: number = 1): Promise<void> => {
     return new Promise((resolve, reject) => {
         if (!window.speechSynthesis) return resolve();
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = rate;
         const voices = window.speechSynthesis.getVoices();
         const preferredVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices[0];
         if (preferredVoice) utterance.voice = preferredVoice;

@@ -74,6 +74,7 @@ const Translator: React.FC<TranslatorProps> = ({ onSendToChat }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [voiceSpeed, setVoiceSpeed] = useState(1);
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   
   // Camera State
@@ -89,6 +90,8 @@ const Translator: React.FC<TranslatorProps> = ({ onSendToChat }) => {
   const recognitionRef = useRef<any>(null);
   const workerRef = useRef<any>(null);
   const ocrIntervalRef = useRef<any>(null);
+  const sourceTextAreaRef = useRef<HTMLTextAreaElement>(null);
+  const cursorPositionRef = useRef<number | null>(null);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -100,9 +103,30 @@ const Translator: React.FC<TranslatorProps> = ({ onSendToChat }) => {
             recognitionRef.current.interimResults = false;
 
             recognitionRef.current.onresult = (event: any) => {
-                const transcript = event.results[0][0].transcript;
-                setSourceText(transcript);
-                setIsListening(false);
+                const latestResult = event.results[event.results.length - 1];
+                if (!latestResult.isFinal && recognitionRef.current.continuous) {
+                    return; // Wait for final result in continuous mode to avoid duplicates if interim is enabled
+                }
+                const transcript = latestResult[0].transcript;
+                setSourceText(prev => {
+                    if (cursorPositionRef.current !== null) {
+                        const pos = cursorPositionRef.current;
+                        const before = prev.substring(0, pos);
+                        const after = prev.substring(pos);
+                        const spaceBefore = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
+                        const spaceAfter = after.length > 0 && !after.startsWith(' ') ? ' ' : '';
+                        const newText = before + spaceBefore + transcript + spaceAfter + after;
+                        cursorPositionRef.current = pos + spaceBefore.length + transcript.length + spaceAfter.length;
+                        return newText;
+                    }
+                    if (recognitionRef.current.continuous) {
+                        return prev + (prev.length > 0 && !prev.endsWith(' ') ? ' ' : '') + transcript;
+                    }
+                    return transcript;
+                });
+                if (!recognitionRef.current.continuous) {
+                    setIsListening(false);
+                }
             };
 
             recognitionRef.current.onerror = (event: any) => {
@@ -374,12 +398,16 @@ const Translator: React.FC<TranslatorProps> = ({ onSendToChat }) => {
   };
   const toggleListening = () => {
     if (isListening) { recognitionRef.current?.stop(); setIsListening(false); }
-    else { recognitionRef.current?.start(); setIsListening(true); }
+    else { 
+        if (recognitionRef.current) recognitionRef.current.continuous = false;
+        recognitionRef.current?.start(); 
+        setIsListening(true); 
+    }
   };
   const handleSpeak = async () => {
       if (!targetText) return;
       setIsPlaying(true);
-      await speakText(targetText);
+      await speakText(targetText, voiceSpeed);
       setIsPlaying(false);
   };
   const handleSwap = () => {
@@ -544,8 +572,50 @@ const Translator: React.FC<TranslatorProps> = ({ onSendToChat }) => {
                         <input type="file" className="hidden" accept={tierConfig.allowedMimeTypes.join(',')} onChange={handleFileUpload} />
                         <i className="fas fa-paperclip"></i> {attachedFile ? ' Change' : ' Attach'}
                     </label>
-                    <button onClick={toggleListening} disabled={!!attachedFile} className={`text-xs flex items-center gap-1 font-bold transition-colors ${isListening ? 'text-red-600 animate-pulse' : 'text-gray-500 hover:text-indigo-600'}`}>
-                        <i className={`fas fa-microphone${isListening ? '' : '-slash'}`}></i> Voice
+                    <button 
+                        onMouseDown={() => {
+                            if (document.activeElement === sourceTextAreaRef.current) {
+                                cursorPositionRef.current = sourceTextAreaRef.current?.selectionStart ?? null;
+                            } else {
+                                cursorPositionRef.current = null;
+                            }
+                        }}
+                        onClick={toggleListening} 
+                        disabled={!!attachedFile} 
+                        className={`text-xs flex items-center gap-1 font-bold transition-colors ${isListening && !recognitionRef.current?.continuous ? 'text-red-600 animate-pulse' : 'text-gray-500 hover:text-indigo-600'}`}
+                    >
+                        <i className={`fas fa-microphone${isListening && !recognitionRef.current?.continuous ? '' : '-slash'}`}></i> Voice
+                    </button>
+                    <button 
+                        onMouseDown={() => {
+                            if (document.activeElement === sourceTextAreaRef.current) {
+                                cursorPositionRef.current = sourceTextAreaRef.current?.selectionStart ?? null;
+                            } else {
+                                cursorPositionRef.current = null;
+                            }
+                            if (recognitionRef.current) {
+                                recognitionRef.current.continuous = true;
+                                recognitionRef.current.start();
+                                setIsListening(true);
+                            }
+                        }}
+                        onMouseUp={() => {
+                            if (recognitionRef.current) {
+                                recognitionRef.current.stop();
+                                setIsListening(false);
+                            }
+                        }}
+                        onMouseLeave={() => {
+                            if (isListening && recognitionRef.current?.continuous) {
+                                recognitionRef.current.stop();
+                                setIsListening(false);
+                            }
+                        }}
+                        disabled={!!attachedFile} 
+                        className={`text-xs flex items-center gap-1 font-bold transition-colors ${isListening && recognitionRef.current?.continuous ? 'text-red-600 animate-pulse' : 'text-gray-500 hover:text-indigo-600'}`}
+                        title="Hold to speak continuously"
+                    >
+                        <i className={`fas fa-microphone-lines`}></i> Hold
                     </button>
                 </div>
             </div>
@@ -566,7 +636,7 @@ const Translator: React.FC<TranslatorProps> = ({ onSendToChat }) => {
                         </div>
                     </div>
                 ) : (
-                    <textarea value={sourceText} onChange={(e) => setSourceText(e.target.value)} placeholder="Enter text or use camera..." className="w-full h-full p-5 rounded-2xl border border-gray-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none resize-none shadow-inner text-lg bg-white text-gray-900"></textarea>
+                    <textarea ref={sourceTextAreaRef} value={sourceText} onChange={(e) => setSourceText(e.target.value)} placeholder="Enter text or use camera..." className="w-full h-full p-5 rounded-2xl border border-gray-300 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none resize-none shadow-inner text-lg bg-white text-gray-900"></textarea>
                 )}
             </div>
         </div>
@@ -575,7 +645,19 @@ const Translator: React.FC<TranslatorProps> = ({ onSendToChat }) => {
         <div className="relative group h-full">
             <div className="flex justify-between mb-2">
                 <span className="text-sm font-semibold text-gray-600">Result</span>
-                <div className="flex gap-3">
+                <div className="flex gap-3 items-center">
+                     <select 
+                        value={voiceSpeed}
+                        onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
+                        className="text-xs p-1 border border-gray-300 rounded focus:ring-1 focus:ring-indigo-500 outline-none bg-white text-gray-700"
+                        title="Voice Speed"
+                     >
+                        <option value={0.5}>0.5x</option>
+                        <option value={0.75}>0.75x</option>
+                        <option value={1}>1x</option>
+                        <option value={1.25}>1.25x</option>
+                        <option value={1.5}>1.5x</option>
+                     </select>
                      <button onClick={handleDownload} disabled={!targetText} className={`text-xs font-bold flex items-center gap-1 ${targetText ? 'text-indigo-600' : 'text-gray-300'}`}><i className="fas fa-download"></i> Download</button>
                      <button onClick={handleSpeak} disabled={!targetText} className={`text-xs font-bold flex items-center gap-1 ${isPlaying ? 'text-green-600' : 'text-gray-500 hover:text-indigo-600'}`}><i className={`fas fa-volume-${isPlaying ? 'up' : 'off'}`}></i> Listen</button>
                      <button onClick={() => navigator.clipboard.writeText(targetText)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"><i className="fas fa-copy mr-1"></i> Copy</button>
