@@ -8,7 +8,7 @@ const MODEL_NAME = 'gemini-3-flash-preview';
 const MAPS_MODEL = 'gemini-2.5-flash';
 const IMAGE_MODEL = 'gemini-3-pro-image-preview';
 const VEO_MODEL = 'veo-3.1-fast-generate-preview';
-const EMBEDDING_MODEL = 'text-embedding-004';
+const EMBEDDING_MODEL = 'gemini-embedding-2-preview';
 const LIVE_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
 // --- Helper: Ensure API Key for Premium Models ---
