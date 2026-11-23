@@ -36,10 +36,17 @@ A context-aware chat interface supporting multiple personas and providers:
 
 ### 3. Truth Guard™ Knowledge Base (RAG)
 An integrated Vector Store system for private, grounded intelligence:
-*   **In-Memory Vector Store:** client-side vectorization using `text-embedding-004`.
-*   **Dynamic Scraping:** Python-based backend scraper to fetch web content and index it instantly.
+*   **Vector Store:** Semantic vectorization using `gemini-embedding-2-preview`.
+*   **Dynamic Scraping:** Optional Python backend scraper to fetch web content and index it.
 *   **Tiered Knowledge:** Pre-loaded foundational knowledge sets based on user tiers (Free vs. Enterprise).
 *   **Document Q&A:** Chat specifically with uploaded documents to extract summaries, keywords, or answers.
+
+### 4. Agent & Skills Mode (`Skills.md` + REST + MCP)
+InferMate can be invoked directly as an external AI agent skill from **Claude Code**, **Claude Desktop**, **Claude API**, **DeepSeek**, **Cursor**, **Cline**, or **OpenAI-compatible** agents:
+*   **Skill Specification:** Root `Skills.md` served live at `GET /Skills.md` and `GET /SKILL.md`.
+*   **Tool Manifest:** `GET /api/agent/manifest` and `GET /.well-known/agent.json` expose schemas for Claude Tool Use, DeepSeek/OpenAI Function Calling, and MCP.
+*   **Streamable HTTP MCP:** `POST /api/agent/mcp` implements JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`).
+*   **REST Endpoints:** `/api/agent/translate`, `/api/agent/ocr`, `/api/agent/rag/ingest`, `/api/agent/rag/query`, `/api/agent/rag/stats`, `/api/agent/chat`, and `/api/agent/analyze`.
 
 ---
 
@@ -51,61 +58,38 @@ An integrated Vector Store system for private, grounded intelligence:
 *   **State Management:** Context API (`TierContext`) for managing subscription features.
 *   **AI SDKs:** `@google/genai` (v1.38+), `tesseract.js`.
 
-### Backend (Microservice)
+### Server & Agent Runtime (`server.ts`)
+*   **Stack:** Express + Vite middleware (dev) / static bundle (production) on port 3000.
+*   **Functions:** Serves `Skills.md`, Agent Manifest, REST tool endpoints, and Streamable HTTP MCP JSON-RPC with optional `INFERMATE_AGENT_API_KEY` Bearer protection.
+
+### Optional Python Microservice (`backend/app.py`)
 *   **Stack:** Python (Flask).
 *   **Functions:**
     *   `POST /scrape`: Fetches clean text from URLs for the RAG engine.
     *   `POST /chat/hf`: Proxies requests to HuggingFace Inference API to bypass CORS.
-
-### Tiered Feature System
-InferMate operates on a business-ready tiered architecture:
-| Feature | Free | Pro | Enterprise |
-| :--- | :---: | :---: | :---: |
-| **Max File Size** | 2MB | 10MB | 20MB |
-| **RAG Knowledge** | General History/Science | Advanced Philosophy | Global Economics |
-| **Media Gen** | Basic | Image Generation | Veo Video Gen |
-| **Models** | Gemini Flash | Gemini Pro | Gemini Ultra (Simulated) |
 
 ---
 
 ## 🛠️ Installation & Setup
 
 ### Prerequisites
-*   Node.js (v18+)
-*   Python (3.9+)
+*   Node.js (v20+)
 *   Google Gemini API Key
-*   (Optional) HuggingFace API Key
+*   (Optional) `INFERMATE_AGENT_API_KEY` to protect external agent API calls
 
 ### 1. Environment Setup
-Create a `.env` file in the root directory:
+Copy `.env.example` to `.env.local` and set your keys:
 ```env
-API_KEY=your_google_gemini_api_key
-HF_API_KEY=your_hugging_face_token
+GEMINI_API_KEY=your_google_gemini_api_key
+INFERMATE_AGENT_API_KEY=optional_bearer_secret
 ```
 
-### 2. Start Backend (Scraper & Proxy)
-The Python backend handles web scraping and open-source model proxying.
-```bash
-cd backend
-pip install flask flask-cors requests beautifulsoup4
-python app.py
-```
-*Server runs on `http://localhost:5000`*
-
-### 3. Start Frontend
+### 2. Start Full-Stack App & Agent Runtime
 ```bash
 npm install
-npm start
+npm run dev
 ```
-*App runs on `http://localhost:3000`*
-
----
-
-## 🔮 Future Roadmap
-
-*   **Offline First:** Implement local LLM (WebLLM) for full offline capabilities.
-*   **Voice Cloning:** Integration of custom voice cloning for the Live API.
-*   **Enterprise connectors:** Direct connectors for Google Drive and Slack ingestion into Truth Guard™.
+*App & Agent Skill API run on `http://localhost:3000`*
 
 ---
 

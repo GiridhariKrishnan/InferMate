@@ -3,6 +3,7 @@ import { AppMode, Tier, TIER_CONFIGS } from './types';
 import Translator from './components/Translator';
 import IntelligentChat from './components/IntelligentChat';
 import KnowledgeBase from './components/KnowledgeBase';
+import AgentSkillsHub from './components/AgentSkillsHub';
 import { useTier } from './contexts/TierContext';
 import { vectorStore } from './services/vectorStore';
 
@@ -126,6 +127,19 @@ const App: React.FC = () => {
                         <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 rounded-t-full animate-slide-up"></span>
                     )}
                 </button>
+                <button 
+                    onClick={() => setActiveTab(AppMode.AGENT_SKILLS)}
+                    className={`pb-4 px-2 text-sm font-semibold flex items-center gap-2 transition-all relative whitespace-nowrap ${
+                        activeTab === AppMode.AGENT_SKILLS 
+                        ? 'text-indigo-600' 
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                >
+                    <i className="fas fa-robot text-lg"></i> Agent Skills
+                    {activeTab === AppMode.AGENT_SKILLS && (
+                        <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 rounded-t-full animate-slide-up"></span>
+                    )}
+                </button>
                 <div className="flex-1"></div>
             </div>
 
@@ -145,6 +159,10 @@ const App: React.FC = () => {
                 <div className={activeTab === AppMode.KNOWLEDGE_BASE ? 'block h-full' : 'hidden'}>
                     <KnowledgeBase />
                 </div>
+
+                <div className={activeTab === AppMode.AGENT_SKILLS ? 'block h-full' : 'hidden'}>
+                    <AgentSkillsHub />
+                </div>
             </div>
 
             {/* Status Bar */}
@@ -152,9 +170,10 @@ const App: React.FC = () => {
                 <div className="flex gap-4">
                     <span><i className="fas fa-circle text-emerald-500 mr-1 text-[6px] align-middle"></i>System Operational</span>
                     <span><i className="fas fa-shield-alt mr-1"></i>Guardrails Active</span>
+                    <span><i className="fas fa-robot mr-1"></i>Skills.md &amp; MCP Ready</span>
                 </div>
                 <div>
-                   Gemini 2.5 Flash • Context: 1M Tokens
+                   Gemini 3 Flash • Embeddings v2 • Context: 1M Tokens
                 </div>
             </div>
 

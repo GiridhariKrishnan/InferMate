@@ -1,7 +1,8 @@
 export enum AppMode {
   TRANSLATOR = 'translator',
   INTELLIGENT_CHAT = 'intelligent_chat',
-  KNOWLEDGE_BASE = 'knowledge_base'
+  KNOWLEDGE_BASE = 'knowledge_base',
+  AGENT_SKILLS = 'agent_skills'
 }
 
 export enum TranslationMode {
