@@ -32,7 +32,24 @@ if (fs.existsSync(envLocalPath)) {
 const PORT = Number(process.env.PORT) || 3000;
 const MODEL_NAME = 'gemini-3-flash-preview';
 const EMBEDDING_MODEL = 'gemini-embedding-2-preview';
-const SKILLS_MD_PATH = path.resolve(__dirname, 'Skills.md');
+const SKILL_NAME = 'infermate-hybrid-intelligence';
+const SKILL_DIR = path.resolve(__dirname, 'skills', SKILL_NAME);
+const SKILL_MD_PATH = path.resolve(SKILL_DIR, 'SKILL.md');
+const SKILL_PACKAGE_FILES: Record<string, { filePath: string; contentType: string }> = {
+  'SKILL.md': { filePath: SKILL_MD_PATH, contentType: 'text/markdown; charset=utf-8' },
+  'references/api-reference.md': {
+    filePath: path.resolve(SKILL_DIR, 'references', 'api-reference.md'),
+    contentType: 'text/markdown; charset=utf-8'
+  },
+  'references/integrations.md': {
+    filePath: path.resolve(SKILL_DIR, 'references', 'integrations.md'),
+    contentType: 'text/markdown; charset=utf-8'
+  },
+  'scripts/infermate.mjs': {
+    filePath: path.resolve(SKILL_DIR, 'scripts', 'infermate.mjs'),
+    contentType: 'application/javascript; charset=utf-8'
+  }
+};
 
 const MAX_TEXT_LENGTH = 50_000;
 const MAX_BASE64_LENGTH = 10_000_000;
@@ -413,13 +430,27 @@ async function executeChat(args: Record<string, unknown>) {
 
   const ai = getAiClient();
   const tools = useSearch ? [{ googleSearch: {} }] : undefined;
-  const chat = ai.chats.create({
-    model: MODEL_NAME,
-    config: { systemInstruction, ...(tools ? { tools } : {}) },
-    history: apiHistory
-  });
-
-  const response = await chat.sendMessage({ message });
+  let response;
+  try {
+    const chat = ai.chats.create({
+      model: MODEL_NAME,
+      config: { systemInstruction, ...(tools ? { tools } : {}) },
+      history: apiHistory
+    });
+    response = await chat.sendMessage({ message });
+  } catch (err: unknown) {
+    const errObj = err as { status?: number; message?: string };
+    if (useSearch && (errObj?.status === 403 || errObj?.message?.includes('PERMISSION_DENIED'))) {
+      const fallbackChat = ai.chats.create({
+        model: MODEL_NAME,
+        config: { systemInstruction },
+        history: apiHistory
+      });
+      response = await fallbackChat.sendMessage({ message });
+    } else {
+      throw err;
+    }
+  }
   const sources: { title: string; uri: string }[] = [];
   const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
   if (Array.isArray(groundingChunks)) {
@@ -518,25 +549,197 @@ function handleRouteError(res: Response, error: unknown) {
   });
 }
 
+function validateSkillPackage() {
+  const checks: { id: string; label: string; passed: boolean; detail: string }[] = [];
+  const exists = fs.existsSync(SKILL_MD_PATH);
+  checks.push({
+    id: 'filename',
+    label: 'Exact uppercase SKILL.md filename',
+    passed: exists && path.basename(SKILL_MD_PATH) === 'SKILL.md',
+    detail: exists ? 'skills/infermate-hybrid-intelligence/SKILL.md found' : 'SKILL.md missing'
+  });
+
+  if (!exists) {
+    return { valid: false, checks };
+  }
+
+  const raw = fs.readFileSync(SKILL_MD_PATH, 'utf8');
+  const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const hasFrontmatter = Boolean(fmMatch);
+  checks.push({
+    id: 'frontmatter',
+    label: 'Valid YAML frontmatter delimiters',
+    passed: hasFrontmatter,
+    detail: hasFrontmatter ? 'Frontmatter block present' : 'Missing --- YAML frontmatter'
+  });
+
+  if (fmMatch) {
+    const fmLines = fmMatch[1].split(/\r?\n/);
+    const allowedTopLevel = new Set([
+      'name',
+      'description',
+      'license',
+      'compatibility',
+      'metadata',
+      'allowed-tools'
+    ]);
+    const topKeys: string[] = [];
+    const metadataEntries: Record<string, string> = {};
+    let currentKey = '';
+    let inMetadata = false;
+    let compatibilityIsList = false;
+    let metadataHasNested = false;
+    const scalarValues: Record<string, string> = {};
+
+    for (const line of fmLines) {
+      if (!line.trim() || line.trim().startsWith('#')) continue;
+      if (!line.startsWith(' ') && !line.startsWith('\t')) {
+        const idx = line.indexOf(':');
+        if (idx > 0) {
+          currentKey = line.slice(0, idx).trim();
+          topKeys.push(currentKey);
+          inMetadata = currentKey === 'metadata';
+          const val = line.slice(idx + 1).trim();
+          if (val && val !== '>-' && val !== '|' && val !== '>') {
+            scalarValues[currentKey] = val.replace(/^["']|["']$/g, '');
+          } else {
+            scalarValues[currentKey] = '';
+          }
+        }
+      } else if (inMetadata) {
+        const trimmed = line.trim();
+        const indent = line.length - line.trimStart().length;
+        if (indent >= 4) {
+          metadataHasNested = true;
+        }
+        const idx = trimmed.indexOf(':');
+        if (idx > 0) {
+          const mk = trimmed.slice(0, idx).trim();
+          const mv = trimmed.slice(idx + 1).trim();
+          if (!mv) metadataHasNested = true;
+          metadataEntries[mk] = mv.replace(/^["']|["']$/g, '');
+        }
+      } else if (currentKey) {
+        const trimmed = line.trim();
+        if (currentKey === 'compatibility' && trimmed.startsWith('- ')) {
+          compatibilityIsList = true;
+        }
+        scalarValues[currentKey] = `${scalarValues[currentKey] || ''} ${trimmed}`.trim();
+      }
+    }
+
+    const unknownKeys = topKeys.filter((k) => !allowedTopLevel.has(k));
+    checks.push({
+      id: 'allowed-keys',
+      label: 'Only official Agent Skills frontmatter keys',
+      passed: unknownKeys.length === 0,
+      detail:
+        unknownKeys.length === 0
+          ? `Keys: ${topKeys.join(', ')}`
+          : `Unsupported keys: ${unknownKeys.join(', ')}`
+    });
+
+    const parsedName = scalarValues.name || '';
+    const nameRegexOk = /^[a-z0-9]+(-[a-z0-9]+)*$/.test(parsedName) && parsedName.length <= 64;
+    const folderMatches = parsedName === path.basename(SKILL_DIR);
+    checks.push({
+      id: 'name-rule',
+      label: 'name format & parent folder match',
+      passed: nameRegexOk && folderMatches,
+      detail: `name="${parsedName}", folder="${path.basename(SKILL_DIR)}"`
+    });
+
+    const desc = scalarValues.description || '';
+    checks.push({
+      id: 'description-rule',
+      label: 'description non-empty (<= 1024 chars)',
+      passed: desc.length > 0 && desc.length <= 1024,
+      detail: `${desc.length} / 1024 characters`
+    });
+
+    const compat = scalarValues.compatibility || '';
+    checks.push({
+      id: 'compatibility-rule',
+      label: 'compatibility is plain string (<= 500 chars)',
+      passed: !compatibilityIsList && compat.length <= 500,
+      detail: compatibilityIsList
+        ? 'Must be string, not YAML array'
+        : `${compat.length} / 500 characters`
+    });
+
+    checks.push({
+      id: 'metadata-rule',
+      label: 'metadata is flat string-to-string map',
+      passed: !metadataHasNested && Object.keys(metadataEntries).length > 0,
+      detail: metadataHasNested
+        ? 'Nested objects found in metadata'
+        : `${Object.keys(metadataEntries).length} flat string keys`
+    });
+  }
+
+  const missingAssets = Object.entries(SKILL_PACKAGE_FILES)
+    .filter(([, meta]) => !fs.existsSync(meta.filePath))
+    .map(([rel]) => rel);
+  checks.push({
+    id: 'references',
+    label: 'Progressive disclosure references & helper script present',
+    passed: missingAssets.length === 0,
+    detail:
+      missingAssets.length === 0
+        ? 'api-reference.md, integrations.md, scripts/infermate.mjs verified'
+        : `Missing: ${missingAssets.join(', ')}`
+  });
+
+  return {
+    valid: checks.every((c) => c.passed),
+    skillName: SKILL_NAME,
+    directory: `skills/${SKILL_NAME}`,
+    checks
+  };
+}
+
 async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
   app.use(express.json({ limit: '10mb' }));
 
   // --- Skill Specification & Discovery Routes (Read-only GET) ---
-  const serveSkillsMarkdown = (_req: Request, res: Response) => {
+  const serveSkillMarkdown = (_req: Request, res: Response) => {
     try {
-      const content = fs.readFileSync(SKILLS_MD_PATH, 'utf8');
+      const content = fs.readFileSync(SKILL_MD_PATH, 'utf8');
       res.type('text/markdown; charset=utf-8').send(content);
     } catch (err) {
-      console.error('Failed to read Skills.md:', err);
-      res.status(404).type('text/plain').send('Skills.md not found');
+      console.error('Failed to read SKILL.md:', err);
+      res.status(404).type('text/plain').send('SKILL.md not found');
     }
   };
 
-  app.get('/Skills.md', serveSkillsMarkdown);
-  app.get('/SKILL.md', serveSkillsMarkdown);
-  app.get('/api/agent/skill', serveSkillsMarkdown);
+  app.get('/SKILL.md', serveSkillMarkdown);
+  app.get('/Skills.md', serveSkillMarkdown);
+  app.get('/api/agent/skill', serveSkillMarkdown);
+
+  // Serve allowlisted files inside skills/infermate-hybrid-intelligence/
+  app.get(`/skills/${SKILL_NAME}/SKILL.md`, serveSkillMarkdown);
+  app.get(`/skills/${SKILL_NAME}/references/:file`, (req, res) => {
+    const key = `references/${req.params.file}`;
+    const entry = SKILL_PACKAGE_FILES[key];
+    if (!entry || !fs.existsSync(entry.filePath)) {
+      return res.status(404).type('text/plain').send('Reference file not found');
+    }
+    return res.type(entry.contentType).send(fs.readFileSync(entry.filePath, 'utf8'));
+  });
+  app.get(`/skills/${SKILL_NAME}/scripts/:file`, (req, res) => {
+    const key = `scripts/${req.params.file}`;
+    const entry = SKILL_PACKAGE_FILES[key];
+    if (!entry || !fs.existsSync(entry.filePath)) {
+      return res.status(404).type('text/plain').send('Script file not found');
+    }
+    return res.type(entry.contentType).send(fs.readFileSync(entry.filePath, 'utf8'));
+  });
+
+  app.get('/api/agent/skill/validate', (_req, res) => {
+    res.json(validateSkillPackage());
+  });
 
   app.get('/api/agent/manifest', (req, res) => {
     res.json(buildAgentManifest(getBaseUrl(req)));
@@ -617,6 +820,21 @@ async function startServer() {
   });
 
   // --- Streamable HTTP MCP JSON-RPC 2.0 Endpoint ---
+  // Stateless Streamable HTTP servers MUST return 405 on GET/DELETE rather than SPA HTML
+  app.get('/api/agent/mcp', (_req, res) => {
+    res.setHeader('Allow', 'POST');
+    res.status(405).json({
+      error: 'Method Not Allowed. Send JSON-RPC 2.0 requests via POST /api/agent/mcp.'
+    });
+  });
+
+  app.delete('/api/agent/mcp', (_req, res) => {
+    res.setHeader('Allow', 'POST');
+    res.status(405).json({
+      error: 'Method Not Allowed. This MCP endpoint is stateless.'
+    });
+  });
+
   app.post('/api/agent/mcp', verifyAgentBearer, async (req, res) => {
     const body = req.body as {
       jsonrpc?: string;
@@ -625,6 +843,7 @@ async function startServer() {
       params?: Record<string, unknown>;
     };
 
+    const hasId = body && Object.prototype.hasOwnProperty.call(body, 'id');
     const id = body?.id ?? null;
     if (!body || body.jsonrpc !== '2.0' || typeof body.method !== 'string') {
       return res.status(400).json({
@@ -632,6 +851,11 @@ async function startServer() {
         id,
         error: { code: -32600, message: 'Invalid JSON-RPC 2.0 request.' }
       });
+    }
+
+    // Per JSON-RPC 2.0 & MCP Streamable HTTP spec, notifications (no id) return 202 Accepted
+    if (!hasId || body.method.startsWith('notifications/')) {
+      return res.status(202).end();
     }
 
     try {
@@ -642,16 +866,13 @@ async function startServer() {
             id,
             result: {
               protocolVersion: '2025-03-26',
-              capabilities: { tools: {} },
+              capabilities: { tools: { listChanged: false } },
               serverInfo: {
-                name: 'infermate-hybrid-intelligence',
+                name: SKILL_NAME,
                 version: '1.0.0'
               }
             }
           });
-
-        case 'notifications/initialized':
-          return res.status(204).end();
 
         case 'ping':
           return res.json({ jsonrpc: '2.0', id, result: {} });
@@ -677,16 +898,30 @@ async function startServer() {
               error: { code: -32602, message: 'Missing tool name in params.name.' }
             });
           }
-          const toolResult = await dispatchAgentTool(params.name, params.arguments || {});
-          return res.json({
-            jsonrpc: '2.0',
-            id,
-            result: {
-              content: [{ type: 'text', text: JSON.stringify(toolResult, null, 2) }],
-              structuredContent: toolResult,
-              isError: false
-            }
-          });
+          try {
+            const toolResult = await dispatchAgentTool(params.name, params.arguments || {});
+            return res.json({
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: JSON.stringify(toolResult, null, 2) }],
+                structuredContent: toolResult,
+                isError: false
+              }
+            });
+          } catch (toolErr) {
+            // Tool execution/validation errors return MCP isError: true so agents can self-correct
+            const errMsg =
+              toolErr instanceof HttpError ? toolErr.message : 'Tool execution failed.';
+            return res.json({
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{ type: 'text', text: errMsg }],
+                isError: true
+              }
+            });
+          }
         }
 
         default:

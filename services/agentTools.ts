@@ -314,7 +314,18 @@ export function buildAgentManifest(baseUrl: string) {
     version: '1.0.0',
     description:
       'Multimodal agent skill for neural translation, transliteration, vision OCR, Truth Guard RAG, grounded chat, and document analysis.',
-    skillUrl: `${cleanBase}/Skills.md`,
+    skillUrl: `${cleanBase}/SKILL.md`,
+    skillPackage: {
+      directory: 'skills/infermate-hybrid-intelligence',
+      skillMd: `${cleanBase}/skills/infermate-hybrid-intelligence/SKILL.md`,
+      references: [
+        `${cleanBase}/skills/infermate-hybrid-intelligence/references/api-reference.md`,
+        `${cleanBase}/skills/infermate-hybrid-intelligence/references/integrations.md`
+      ],
+      scripts: [
+        `${cleanBase}/skills/infermate-hybrid-intelligence/scripts/infermate.mjs`
+      ]
+    },
     mcpEndpoint: `${cleanBase}/api/agent/mcp`,
     apiBaseUrl: `${cleanBase}/api/agent`,
     authentication: {

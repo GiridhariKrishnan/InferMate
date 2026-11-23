@@ -170,7 +170,7 @@ const App: React.FC = () => {
                 <div className="flex gap-4">
                     <span><i className="fas fa-circle text-emerald-500 mr-1 text-[6px] align-middle"></i>System Operational</span>
                     <span><i className="fas fa-shield-alt mr-1"></i>Guardrails Active</span>
-                    <span><i className="fas fa-robot mr-1"></i>Skills.md &amp; MCP Ready</span>
+                    <span><i className="fas fa-robot mr-1"></i>SKILL.md &amp; MCP Ready</span>
                 </div>
                 <div>
                    Gemini 3 Flash • Embeddings v2 • Context: 1M Tokens

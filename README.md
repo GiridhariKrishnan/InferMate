@@ -41,11 +41,11 @@ An integrated Vector Store system for private, grounded intelligence:
 *   **Tiered Knowledge:** Pre-loaded foundational knowledge sets based on user tiers (Free vs. Enterprise).
 *   **Document Q&A:** Chat specifically with uploaded documents to extract summaries, keywords, or answers.
 
-### 4. Agent & Skills Mode (`Skills.md` + REST + MCP)
-InferMate can be invoked directly as an external AI agent skill from **Claude Code**, **Claude Desktop**, **Claude API**, **DeepSeek**, **Cursor**, **Cline**, or **OpenAI-compatible** agents:
-*   **Skill Specification:** Root `Skills.md` served live at `GET /Skills.md` and `GET /SKILL.md`.
+### 4. Agent & Skills Mode (`SKILL.md` + REST + MCP)
+InferMate ships as an **Agent Skills (`agentskills.io`)** compliant package at `skills/infermate-hybrid-intelligence/SKILL.md` for **Claude Code**, **Claude Desktop**, **Claude API**, **DeepSeek**, **Cursor**, **Cline**, **OpenAI Codex**, and custom agents:
+*   **Skill Package:** `skills/infermate-hybrid-intelligence/SKILL.md` (with `references/` and `scripts/infermate.mjs`), served live at `GET /SKILL.md` and validated at `GET /api/agent/skill/validate`.
 *   **Tool Manifest:** `GET /api/agent/manifest` and `GET /.well-known/agent.json` expose schemas for Claude Tool Use, DeepSeek/OpenAI Function Calling, and MCP.
-*   **Streamable HTTP MCP:** `POST /api/agent/mcp` implements JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`).
+*   **Streamable HTTP MCP:** `POST /api/agent/mcp` implements JSON-RPC 2.0 (`initialize`, `ping`, `tools/list`, `tools/call`).
 *   **REST Endpoints:** `/api/agent/translate`, `/api/agent/ocr`, `/api/agent/rag/ingest`, `/api/agent/rag/query`, `/api/agent/rag/stats`, `/api/agent/chat`, and `/api/agent/analyze`.
 
 ---
@@ -60,7 +60,7 @@ InferMate can be invoked directly as an external AI agent skill from **Claude Co
 
 ### Server & Agent Runtime (`server.ts`)
 *   **Stack:** Express + Vite middleware (dev) / static bundle (production) on port 3000.
-*   **Functions:** Serves `Skills.md`, Agent Manifest, REST tool endpoints, and Streamable HTTP MCP JSON-RPC with optional `INFERMATE_AGENT_API_KEY` Bearer protection.
+*   **Functions:** Serves `SKILL.md`, progressive-disclosure references/scripts, Agent Manifest, live compliance validator, REST tool endpoints, and Streamable HTTP MCP JSON-RPC with optional `INFERMATE_AGENT_API_KEY` Bearer protection.
 
 ### Optional Python Microservice (`backend/app.py`)
 *   **Stack:** Python (Flask).

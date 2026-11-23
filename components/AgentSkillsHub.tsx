@@ -5,10 +5,27 @@ type HubSection = 'connect' | 'playground' | 'spec';
 type PlatformTab = 'claude-code' | 'claude-api' | 'deepseek' | 'openai-curl';
 type ProtocolMode = 'rest' | 'mcp';
 
+interface ValidationCheck {
+  id: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+interface SkillValidationResult {
+  valid: boolean;
+  skillName: string;
+  directory: string;
+  checks: ValidationCheck[];
+}
+
+const SKILL_NAME = 'infermate-hybrid-intelligence';
+
 const AgentSkillsHub: React.FC = () => {
   const [section, setSection] = useState<HubSection>('connect');
   const [platform, setPlatform] = useState<PlatformTab>('claude-code');
-  const [skillsMarkdown, setSkillsMarkdown] = useState<string>('');
+  const [skillMarkdown, setSkillMarkdown] = useState<string>('');
+  const [validation, setValidation] = useState<SkillValidationResult | null>(null);
   const [loadingSpec, setLoadingSpec] = useState<boolean>(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -40,21 +57,26 @@ const AgentSkillsHub: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    const fetchSpec = async () => {
+    const fetchSpecAndValidation = async () => {
       setLoadingSpec(true);
       try {
-        const res = await fetch('/Skills.md');
-        if (res.ok) {
-          const text = await res.text();
-          if (active) setSkillsMarkdown(text);
+        const [skillRes, valRes] = await Promise.all([
+          fetch('/SKILL.md'),
+          fetch('/api/agent/skill/validate')
+        ]);
+        if (skillRes.ok && active) {
+          setSkillMarkdown(await skillRes.text());
+        }
+        if (valRes.ok && active) {
+          setValidation((await valRes.json()) as SkillValidationResult);
         }
       } catch (err) {
-        console.error('Failed to load Skills.md:', err);
+        console.error('Failed to load SKILL.md:', err);
       } finally {
         if (active) setLoadingSpec(false);
       }
     };
-    fetchSpec();
+    fetchSpecAndValidation();
     return () => {
       active = false;
     };
@@ -163,16 +185,21 @@ const AgentSkillsHub: React.FC = () => {
   };
 
   const snippets = useMemo(() => {
-    const claudeCodeInstall = `# 1. Install InferMate as a Claude Code Skill
-mkdir -p .claude/skills/infermate
-curl -s "${baseUrl}/Skills.md" -o .claude/skills/infermate/SKILL.md
+    const claudeCodeInstall = `# 1. Install full spec-compliant Agent Skill folder (folder name MUST match frontmatter "name")
+SKILL_DIR=".claude/skills/${SKILL_NAME}"
+mkdir -p "$SKILL_DIR/references" "$SKILL_DIR/scripts"
 
-# 2. Export your InferMate endpoint (and optional bearer key if set)
+curl -fsSL "${baseUrl}/SKILL.md" -o "$SKILL_DIR/SKILL.md"
+curl -fsSL "${baseUrl}/skills/${SKILL_NAME}/references/api-reference.md" -o "$SKILL_DIR/references/api-reference.md"
+curl -fsSL "${baseUrl}/skills/${SKILL_NAME}/references/integrations.md" -o "$SKILL_DIR/references/integrations.md"
+curl -fsSL "${baseUrl}/skills/${SKILL_NAME}/scripts/infermate.mjs" -o "$SKILL_DIR/scripts/infermate.mjs"
+
+# 2. Export your InferMate endpoint (and optional bearer key if set on the server)
 export INFERMATE_BASE_URL="${baseUrl}"
 # export INFERMATE_AGENT_API_KEY="your-optional-key"
 
 # 3. Ask Claude Code:
-# "Use the infermate skill to translate this text to Japanese and index it into Truth Guard RAG."`;
+# "Use infermate-hybrid-intelligence to translate this text to Japanese and index it into Truth Guard RAG."`;
 
     const claudeDesktopMcp = `{
   "mcpServers": {
@@ -190,7 +217,7 @@ export INFERMATE_BASE_URL="${baseUrl}"
     const claudeApiPython = `import anthropic, requests
 
 INFERMATE_URL = "${baseUrl}"
-manifest = requests.get(f"{INFERMATE_URL}/api/agent/manifest").json()
+manifest = requests.get(f"{INFERMATE_URL}/api/agent/manifest", timeout=15).json()
 
 client = anthropic.Anthropic()
 msg = client.messages.create(
@@ -209,7 +236,8 @@ for block in msg.content:
                 "id": 1,
                 "method": "tools/call",
                 "params": {"name": block.name, "arguments": block.input}
-            }
+            },
+            timeout=60
         ).json()
         print(res["result"]["structuredContent"])`;
 
@@ -217,7 +245,7 @@ for block in msg.content:
 from openai import OpenAI
 
 INFERMATE_URL = "${baseUrl}"
-manifest = requests.get(f"{INFERMATE_URL}/api/agent/manifest").json()
+manifest = requests.get(f"{INFERMATE_URL}/api/agent/manifest", timeout=15).json()
 tools = manifest["formats"]["openai_deepseek"]
 
 # DeepSeek uses the OpenAI-compatible SDK
@@ -247,7 +275,8 @@ if assistant_msg.tool_calls:
                 "id": call.id,
                 "method": "tools/call",
                 "params": {"name": call.function.name, "arguments": args}
-            }
+            },
+            timeout=60
         ).json()
         messages.append({
             "role": "tool",
@@ -258,18 +287,21 @@ if assistant_msg.tool_calls:
     final = client.chat.completions.create(model="deepseek-chat", messages=messages)
     print(final.choices[0].message.content)`;
 
-    const curlQuickstart = `# 1. Fetch Skills.md specification
-curl -s "${baseUrl}/Skills.md"
+    const curlQuickstart = `# 1. Fetch canonical SKILL.md specification
+curl -s "${baseUrl}/SKILL.md"
 
-# 2. Fetch machine-readable tool schemas (Claude, DeepSeek/OpenAI, MCP)
+# 2. Verify Agent Skills spec compliance
+curl -s "${baseUrl}/api/agent/skill/validate"
+
+# 3. Fetch machine-readable tool schemas (Claude, DeepSeek/OpenAI, MCP)
 curl -s "${baseUrl}/api/agent/manifest"
 
-# 3. Call Neural Translator directly
+# 4. Call Neural Translator directly
 curl -s -X POST "${baseUrl}/api/agent/translate" \\
   -H "Content-Type: application/json" \\
   -d '{"text":"Hello from my AI agent","sourceLang":"en","targetLang":"es","mode":"TRANSLATE"}'
 
-# 4. Call via MCP JSON-RPC 2.0
+# 5. Call via MCP JSON-RPC 2.0
 curl -s -X POST "${baseUrl}/api/agent/mcp" \\
   -H "Content-Type: application/json" \\
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`;
@@ -289,36 +321,42 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-lg">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <div className="text-xs font-bold uppercase tracking-widest text-indigo-300 mb-1">
-              Agent-Ready Platform • Skills.md + REST + MCP
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-indigo-300 mb-1">
+              <span>Agent Skills Standard • SKILL.md + REST + MCP</span>
+              {validation && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    validation.valid
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
+                  }`}
+                >
+                  {validation.valid
+                    ? `${validation.checks.length}/${validation.checks.length} Spec Checks Passed`
+                    : 'Spec Warnings'}
+                </span>
+              )}
             </div>
             <h2 className="text-2xl font-bold mb-1">InferMate Agent &amp; Skills Hub</h2>
             <p className="text-slate-300 text-sm max-w-2xl">
-              Connect InferMate as a live tool skill inside Claude Code, Claude Desktop, DeepSeek,
-              Cursor, Cline, or OpenAI-compatible agents.
+              Compliant <code className="font-mono text-indigo-200">skills/{SKILL_NAME}/SKILL.md</code>{' '}
+              package for Claude Code, Claude Desktop, DeepSeek, Cursor, Cline, and OpenAI Codex.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => downloadFile('Skills.md', skillsMarkdown || '# InferMate Skills')}
-              disabled={!skillsMarkdown}
+              onClick={() => downloadFile('SKILL.md', skillMarkdown || '# InferMate Skill')}
+              disabled={!skillMarkdown}
               className="bg-white text-slate-900 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-colors flex items-center gap-2 disabled:opacity-50"
             >
-              <i className="fas fa-download"></i> Download Skills.md
-            </button>
-            <button
-              onClick={() => downloadFile('SKILL.md', skillsMarkdown || '# InferMate Skills')}
-              disabled={!skillsMarkdown}
-              className="bg-indigo-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-indigo-500 transition-colors flex items-center gap-2 disabled:opacity-50"
-            >
-              <i className="fas fa-robot"></i> Claude SKILL.md
+              <i className="fas fa-download"></i> Download SKILL.md
             </button>
             <button
               onClick={handleDownloadManifest}
-              className="bg-white/10 text-white border border-white/20 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/20 transition-colors flex items-center gap-2"
+              className="bg-indigo-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-indigo-500 transition-colors flex items-center gap-2"
             >
-              <i className="fas fa-code"></i> Tools JSON
+              <i className="fas fa-code"></i> Tools Manifest JSON
             </button>
           </div>
         </div>
@@ -326,7 +364,7 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
         {/* Discovery URLs */}
         <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
           {[
-            { key: 'skill-url', label: 'Skills.md URL', url: `${baseUrl}/Skills.md` },
+            { key: 'skill-url', label: 'Canonical SKILL.md URL', url: `${baseUrl}/SKILL.md` },
             { key: 'manifest-url', label: 'Tool Manifest', url: `${baseUrl}/api/agent/manifest` },
             { key: 'mcp-url', label: 'MCP JSON-RPC', url: `${baseUrl}/api/agent/mcp` }
           ].map((item) => (
@@ -357,7 +395,7 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
         {[
           { id: 'connect' as HubSection, label: 'Connect Claude & DeepSeek', icon: 'fa-plug' },
           { id: 'playground' as HubSection, label: 'Live Agent Playground', icon: 'fa-terminal' },
-          { id: 'spec' as HubSection, label: 'Skills.md & Tool Catalog', icon: 'fa-file-code' }
+          { id: 'spec' as HubSection, label: 'SKILL.md & Compliance', icon: 'fa-check-double' }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -379,7 +417,7 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {[
-              { id: 'claude-code' as PlatformTab, label: 'Claude Code (Skills)' },
+              { id: 'claude-code' as PlatformTab, label: 'Claude Code (SKILL.md)' },
               { id: 'claude-api' as PlatformTab, label: 'Claude Desktop & API' },
               { id: 'deepseek' as PlatformTab, label: 'DeepSeek (API / Cline)' },
               { id: 'openai-curl' as PlatformTab, label: 'OpenAI / cURL / Custom' }
@@ -402,16 +440,18 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
             <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <h3 className="font-bold text-gray-900">Claude Code Agent Skill Setup</h3>
+                  <h3 className="font-bold text-gray-900">Claude Code / Open Agent Skills Setup</h3>
                   <p className="text-xs text-gray-500">
-                    Place <code className="font-mono bg-gray-100 px-1 rounded">SKILL.md</code> in{' '}
-                    <code className="font-mono bg-gray-100 px-1 rounded">.claude/skills/infermate/</code>{' '}
-                    so Claude Code automatically discovers and invokes InferMate tools.
+                    Installs <code className="font-mono bg-gray-100 px-1 rounded">SKILL.md</code>,{' '}
+                    <code className="font-mono bg-gray-100 px-1 rounded">references/</code>, and{' '}
+                    <code className="font-mono bg-gray-100 px-1 rounded">scripts/infermate.mjs</code>{' '}
+                    into <code className="font-mono bg-gray-100 px-1 rounded">.claude/skills/{SKILL_NAME}/</code>{' '}
+                    so the folder name matches frontmatter <code className="font-mono bg-gray-100 px-1 rounded">name</code>.
                   </p>
                 </div>
                 <button
                   onClick={() => copyText('claude-code', snippets.claudeCodeInstall)}
-                  className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100"
+                  className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 flex-shrink-0"
                 >
                   <i className={`fas ${copiedKey === 'claude-code' ? 'fa-check' : 'fa-copy'} mr-1`}></i>
                   {copiedKey === 'claude-code' ? 'Copied' : 'Copy'}
@@ -473,12 +513,13 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
             <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <h3 className="font-bold text-gray-900">DeepSeek Function Calling (`deepseek-chat`)</h3>
+                  <h3 className="font-bold text-gray-900">DeepSeek Function Calling (deepseek-chat)</h3>
                   <p className="text-xs text-gray-500">
                     Uses DeepSeek&apos;s OpenAI-compatible tool calling API with{' '}
                     <code className="font-mono bg-gray-100 px-1 rounded">formats.openai_deepseek</code>.
-                    In Cline / Roo Code / Cursor, you can also register{' '}
-                    <code className="font-mono bg-gray-100 px-1 rounded">{baseUrl}/api/agent/mcp</code> as a Streamable HTTP MCP server or attach <code className="font-mono bg-gray-100 px-1 rounded">Skills.md</code> as project rules.
+                    In Cline, Roo Code, or Cursor, register{' '}
+                    <code className="font-mono bg-gray-100 px-1 rounded">{baseUrl}/api/agent/mcp</code>{' '}
+                    as a Streamable HTTP MCP server or copy <code className="font-mono bg-gray-100 px-1 rounded">skills/{SKILL_NAME}/</code>.
                   </p>
                 </div>
                 <button
@@ -501,7 +542,7 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
                 <div>
                   <h3 className="font-bold text-gray-900">Direct REST &amp; MCP cURL Reference</h3>
                   <p className="text-xs text-gray-500">
-                    Works with OpenAI Agents SDK, LangChain, CrewAI, n8n, or any HTTP-capable agent.
+                    Works with OpenAI Codex, Agents SDK, LangChain, CrewAI, n8n, or any HTTP-capable agent.
                   </p>
                 </div>
                 <button
@@ -643,9 +684,57 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
         </div>
       )}
 
-      {/* SECTION 3: SKILLS.MD SPEC & CATALOG */}
+      {/* SECTION 3: SKILL.MD SPEC & COMPLIANCE */}
       {section === 'spec' && (
         <div className="space-y-4">
+          {/* Live Validation Panel */}
+          {validation && (
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900">Agent Skills Specification Check</h3>
+                  <p className="text-xs text-gray-500">
+                    Validated live against <code className="font-mono bg-gray-100 px-1 rounded">agentskills.io</code> rules for{' '}
+                    <code className="font-mono bg-gray-100 px-1 rounded">{validation.directory}/SKILL.md</code>.
+                  </p>
+                </div>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    validation.valid
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-red-100 text-red-800'
+                  }`}
+                >
+                  {validation.valid ? 'Compliant' : 'Needs Fixes'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {validation.checks.map((c) => (
+                  <div
+                    key={c.id}
+                    className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                      c.passed
+                        ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                        : 'bg-red-50 border-red-200 text-red-900'
+                    }`}
+                  >
+                    <i
+                      className={`fas mt-0.5 ${
+                        c.passed ? 'fa-check-circle text-emerald-600' : 'fa-times-circle text-red-600'
+                      }`}
+                    ></i>
+                    <div className="min-w-0">
+                      <div className="font-bold">{c.label}</div>
+                      <div className="text-[11px] opacity-80 font-mono truncate">{c.detail}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tool Catalog */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {AGENT_TOOLS.map((tool) => (
               <div
@@ -664,22 +753,23 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
             ))}
           </div>
 
+          {/* Raw SKILL.md Viewer */}
           <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                <i className="fas fa-file-alt text-indigo-600"></i> /Skills.md
+                <i className="fas fa-file-alt text-indigo-600"></i> skills/{SKILL_NAME}/SKILL.md
               </h3>
               <button
-                onClick={() => copyText('full-spec', skillsMarkdown)}
-                disabled={!skillsMarkdown}
+                onClick={() => copyText('full-spec', skillMarkdown)}
+                disabled={!skillMarkdown}
                 className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 disabled:opacity-50"
               >
                 <i className={`fas ${copiedKey === 'full-spec' ? 'fa-check' : 'fa-copy'} mr-1`}></i>
-                {copiedKey === 'full-spec' ? 'Copied Markdown' : 'Copy Full Skills.md'}
+                {copiedKey === 'full-spec' ? 'Copied Markdown' : 'Copy Full SKILL.md'}
               </button>
             </div>
             <pre className="bg-slate-950 text-slate-100 p-4 rounded-xl text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap leading-relaxed">
-              {loadingSpec ? 'Loading Skills.md...' : skillsMarkdown || 'Unable to load Skills.md'}
+              {loadingSpec ? 'Loading SKILL.md...' : skillMarkdown || 'Unable to load SKILL.md'}
             </pre>
           </div>
         </div>
