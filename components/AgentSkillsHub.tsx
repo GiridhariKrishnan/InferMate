@@ -345,18 +345,32 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <a
+              href="/api/agent/skill/download.zip?bundle=skill"
+              download={`${SKILL_NAME}-skill.zip`}
+              className="bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-emerald-400 transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <i className="fas fa-file-archive"></i> Skill-Only ZIP
+            </a>
+            <a
+              href="/api/agent/skill/download.zip?bundle=selfhost"
+              download={`${SKILL_NAME}-selfhost.zip`}
+              className="bg-white/15 text-white border border-white/25 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-white/25 transition-colors flex items-center gap-2"
+            >
+              <i className="fas fa-server"></i> Skill + Server ZIP
+            </a>
             <button
               onClick={() => downloadFile('SKILL.md', skillMarkdown || '# InferMate Skill')}
               disabled={!skillMarkdown}
               className="bg-white text-slate-900 px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-colors flex items-center gap-2 disabled:opacity-50"
             >
-              <i className="fas fa-download"></i> Download SKILL.md
+              <i className="fas fa-download"></i> SKILL.md
             </button>
             <button
               onClick={handleDownloadManifest}
               className="bg-indigo-600 text-white px-3.5 py-2 rounded-xl text-xs font-bold hover:bg-indigo-500 transition-colors flex items-center gap-2"
             >
-              <i className="fas fa-code"></i> Tools Manifest JSON
+              <i className="fas fa-code"></i> Tools JSON
             </button>
           </div>
         </div>
@@ -733,6 +747,64 @@ curl -s -X POST "${baseUrl}/api/agent/mcp" \\
               </div>
             </div>
           )}
+
+          {/* Marketplace Listing Declarations */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-gray-900">Marketplace Submission Declarations</h3>
+                <p className="text-xs text-gray-500">
+                  Declare these permissions, environment variables, and outbound hosts when submitting to an agent skill directory.
+                </p>
+              </div>
+              <button
+                onClick={() =>
+                  copyText(
+                    'listing-decl',
+                    JSON.stringify(
+                      {
+                        permissions: ['env_vars', 'network'],
+                        env_vars: [
+                          'INFERMATE_BASE_URL',
+                          'INFERMATE_AGENT_API_KEY',
+                          'GEMINI_API_KEY',
+                          'HF_API_KEY'
+                        ],
+                        outbound_hosts: [
+                          'generativelanguage.googleapis.com',
+                          'api-inference.huggingface.co'
+                        ]
+                      },
+                      null,
+                      2
+                    )
+                  )
+                }
+                className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 flex-shrink-0"
+              >
+                <i className={`fas ${copiedKey === 'listing-decl' ? 'fa-check' : 'fa-copy'} mr-1`}></i>
+                {copiedKey === 'listing-decl' ? 'Copied' : 'Copy JSON'}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <div className="font-bold text-slate-800 mb-1">Permissions</div>
+                <div className="font-mono text-indigo-700">env_vars, network</div>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <div className="font-bold text-slate-800 mb-1">Environment Variables</div>
+                <div className="font-mono text-slate-700 break-words">
+                  INFERMATE_BASE_URL, INFERMATE_AGENT_API_KEY, GEMINI_API_KEY, HF_API_KEY
+                </div>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <div className="font-bold text-slate-800 mb-1">Outbound Hosts</div>
+                <div className="font-mono text-slate-700 break-words">
+                  generativelanguage.googleapis.com, api-inference.huggingface.co
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Tool Catalog */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

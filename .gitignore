@@ -10,7 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-skill
 *.local
+migrated_prompt_history/
+bun.lock
 
 # Editor directories and files
 .vscode/*

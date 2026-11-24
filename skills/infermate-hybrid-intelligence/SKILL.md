@@ -9,15 +9,18 @@ description: >-
   documents.
 license: MIT
 compatibility: >-
-  Requires network access to a running InferMate server (INFERMATE_BASE_URL) and
-  either curl, Node.js 18+, or an MCP Streamable HTTP client. Works with Claude
-  Code, Claude Desktop, DeepSeek, Cursor, Cline, OpenAI Codex, and compatible agents.
+  Requires network access to an InferMate server (INFERMATE_BASE_URL) and curl,
+  Node.js 18+, or an MCP Streamable HTTP client. Self-hosting requires your own
+  GEMINI_API_KEY (and optional HF_API_KEY for Hugging Face models).
 metadata:
   author: infermate
-  version: "1.0.0"
+  version: "1.0.1"
   api_base: "/api/agent"
   mcp_endpoint: "/api/agent/mcp"
   manifest_endpoint: "/api/agent/manifest"
+  permissions: "env_vars, network"
+  env_vars: "INFERMATE_BASE_URL, INFERMATE_AGENT_API_KEY, GEMINI_API_KEY, HF_API_KEY"
+  external_hosts: "generativelanguage.googleapis.com, api-inference.huggingface.co"
 allowed-tools: Bash(curl:*) Bash(node:*) Read
 ---
 
@@ -25,15 +28,33 @@ allowed-tools: Bash(curl:*) Bash(node:*) Read
 
 Use this skill to invoke InferMate's translation, OCR, Truth Guard RAG, grounded chat, and document analysis services over REST or Streamable HTTP MCP.
 
-## Prerequisites
+## Prerequisites & Bring Your Own API Keys
 
-Set `INFERMATE_BASE_URL` to the running InferMate instance (defaults to `http://localhost:3000`):
+### 1. Connecting to an Existing InferMate Server (Skill Client)
+
+Set `INFERMATE_BASE_URL` to your running InferMate instance (defaults to `http://localhost:3000`):
 
 ```bash
 export INFERMATE_BASE_URL="http://localhost:3000"
 # Optional: set if the server operator enabled INFERMATE_AGENT_API_KEY
 # export INFERMATE_AGENT_API_KEY="your-bearer-token"
 ```
+
+### 2. Self-Hosting the InferMate Server (Required User Keys)
+
+If you run the InferMate server yourself rather than connecting to a hosted instance, **you must supply your own API keys** via environment variables (`env_vars` permission):
+
+- **`GEMINI_API_KEY` (Required for `server.ts`)**: Your own Google Gemini API key (from Google AI Studio). Used by `server.ts` (`@google/genai`) for translation, OCR, `gemini-embedding-2-preview` embeddings, RAG answers, chat, and document analysis.
+- **`HF_API_KEY` (Optional, for Hugging Face open-source models)**: Your own Hugging Face Inference API token. Required only if you also run the optional open-source Mistral/Zephyr provider (`backend/app.py` or `services/huggingFaceService.ts`).
+- **`INFERMATE_AGENT_API_KEY` (Optional)**: Shared Bearer token you choose to protect `POST /api/agent/*` and `POST /api/agent/mcp` endpoints.
+
+### 3. Declared Outbound Hosts & Permissions
+
+- **Permissions**: `env_vars`, `network`
+- **Skill Client Host**: `$INFERMATE_BASE_URL` (user-configured InferMate server URL)
+- **Server Upstream Hosts (when self-hosting)**:
+  - `generativelanguage.googleapis.com` — Google Gemini API (via `GEMINI_API_KEY` in `server.ts`)
+  - `api-inference.huggingface.co` — Hugging Face Inference API (via optional `HF_API_KEY` in `backend/app.py` / `services/huggingFaceService.ts`)
 
 ## Available Tools
 
@@ -79,7 +100,7 @@ If `INFERMATE_AGENT_API_KEY` is configured on the server, add `-H "Authorization
 
 ## Guardrails
 
-- Never print or echo `GEMINI_API_KEY` or `INFERMATE_AGENT_API_KEY`.
+- Never print or echo `GEMINI_API_KEY`, `HF_API_KEY`, or `INFERMATE_AGENT_API_KEY`.
 - Keep text payloads under 50,000 characters and base64 files under 10 MB.
 - Use `mode: "TRANSLITERATE"` only for phonetic script conversion (e.g., `"नमस्ते"` -> `"Namaste"`), not semantic translation.
 - If `infermate_rag_query` returns zero matches, inform the user and offer to ingest source context via `infermate_rag_ingest`.

@@ -10,13 +10,20 @@
 | `/api/agent/health` | `GET` | Service status, tool count, auth mode, and Knowledge Base statistics. |
 | `/api/agent/mcp` | `POST` | Streamable HTTP MCP JSON-RPC 2.0 endpoint (`initialize`, `ping`, `tools/list`, `tools/call`). |
 
-## Authentication
+## Authentication, Keys & Outbound Hosts
 
-When the server environment sets `INFERMATE_AGENT_API_KEY`, all `POST /api/agent/*` and `POST /api/agent/mcp` calls require:
+### Required Permissions (`env_vars` & `network`)
+- **`INFERMATE_BASE_URL`** *(client)*: URL of the running InferMate server.
+- **`INFERMATE_AGENT_API_KEY`** *(optional, client + server)*: When configured on the server, all `POST /api/agent/*` and `POST /api/agent/mcp` calls require:
+  ```http
+  Authorization: Bearer <INFERMATE_AGENT_API_KEY>
+  ```
+- **`GEMINI_API_KEY`** *(required if self-hosting `server.ts`)*: User's own Google Gemini API key (`generativelanguage.googleapis.com`).
+- **`HF_API_KEY`** *(optional, if using `backend/app.py` or `services/huggingFaceService.ts`)*: User's own Hugging Face API token (`api-inference.huggingface.co`).
 
-```http
-Authorization: Bearer <INFERMATE_AGENT_API_KEY>
-```
+### Clean Package Downloads
+- `GET /api/agent/skill/download.zip?bundle=skill` — Downloads the standalone `infermate-hybrid-intelligence/` skill folder only (recommended for marketplace submission).
+- `GET /api/agent/skill/download.zip?bundle=selfhost` — Downloads the skill folder plus minimal standalone `server.ts` runtime (excludes prompt history, lockfiles, and optional Hugging Face proxy).
 
 ---
 

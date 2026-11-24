@@ -8,6 +8,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import type { Content, Part } from '@google/genai';
 import { AGENT_TOOLS, buildAgentManifest, getMcpTools } from './services/agentTools.ts';
+import { buildZipBuffer } from './services/zipBuilder.ts';
+import type { ZipEntryInput } from './services/zipBuilder.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -690,6 +692,19 @@ function validateSkillPackage() {
         : `Missing: ${missingAssets.join(', ')}`
   });
 
+  const unwantedFiles = ['migrated_prompt_history', 'bun.lock'].filter((rel) =>
+    fs.existsSync(path.resolve(__dirname, rel))
+  );
+  checks.push({
+    id: 'clean-repo',
+    label: 'No private prompt logs or lockfile bloat in workspace',
+    passed: unwantedFiles.length === 0,
+    detail:
+      unwantedFiles.length === 0
+        ? 'migrated_prompt_history and bun.lock removed'
+        : `Found unwanted items: ${unwantedFiles.join(', ')}`
+  });
+
   return {
     valid: checks.every((c) => c.passed),
     skillName: SKILL_NAME,
@@ -739,6 +754,60 @@ async function startServer() {
 
   app.get('/api/agent/skill/validate', (_req, res) => {
     res.json(validateSkillPackage());
+  });
+
+  // Clean marketplace-ready ZIP download (strictly allowlisted files only)
+  app.get('/api/agent/skill/download.zip', (req, res) => {
+    try {
+      const bundle = req.query.bundle === 'selfhost' ? 'selfhost' : 'skill';
+      const entries: ZipEntryInput[] = [];
+
+      // Always include the clean skill package folder
+      for (const [relPath, meta] of Object.entries(SKILL_PACKAGE_FILES)) {
+        if (fs.existsSync(meta.filePath)) {
+          entries.push({
+            name: `${SKILL_NAME}/${relPath}`,
+            content: fs.readFileSync(meta.filePath)
+          });
+        }
+      }
+
+      // Optional minimal standalone server files (strictly excludes prompt logs, bun.lock, .env*, backend/app.py, huggingFaceService.ts)
+      if (bundle === 'selfhost') {
+        const selfHostAllowlist = [
+          'server.ts',
+          'services/agentTools.ts',
+          'services/zipBuilder.ts',
+          'package.json',
+          'tsconfig.json',
+          '.env.example',
+          'README.md'
+        ];
+        for (const rel of selfHostAllowlist) {
+          const abs = path.resolve(__dirname, rel);
+          if (fs.existsSync(abs)) {
+            entries.push({
+              name: `${SKILL_NAME}-server/${rel}`,
+              content: fs.readFileSync(abs)
+            });
+          }
+        }
+      }
+
+      const zipBuf = buildZipBuffer(entries);
+      const filename =
+        bundle === 'selfhost'
+          ? `${SKILL_NAME}-selfhost.zip`
+          : `${SKILL_NAME}-skill.zip`;
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', String(zipBuf.length));
+      return res.send(zipBuf);
+    } catch (err) {
+      console.error('Failed to build skill ZIP:', err);
+      return res.status(500).json({ error: 'Could not generate skill ZIP package.' });
+    }
   });
 
   app.get('/api/agent/manifest', (req, res) => {

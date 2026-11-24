@@ -311,7 +311,7 @@ export function buildAgentManifest(baseUrl: string) {
   return {
     name: 'infermate-hybrid-intelligence',
     displayName: 'InferMate Hybrid Intelligence Agent',
-    version: '1.0.0',
+    version: '1.0.1',
     description:
       'Multimodal agent skill for neural translation, transliteration, vision OCR, Truth Guard RAG, grounded chat, and document analysis.',
     skillUrl: `${cleanBase}/SKILL.md`,
@@ -324,6 +324,51 @@ export function buildAgentManifest(baseUrl: string) {
       ],
       scripts: [
         `${cleanBase}/skills/infermate-hybrid-intelligence/scripts/infermate.mjs`
+      ],
+      downloads: {
+        skillOnlyZip: `${cleanBase}/api/agent/skill/download.zip?bundle=skill`,
+        selfHostZip: `${cleanBase}/api/agent/skill/download.zip?bundle=selfhost`
+      }
+    },
+    permissions: {
+      required: ['env_vars', 'network'],
+      env_vars: [
+        {
+          name: 'INFERMATE_BASE_URL',
+          scope: 'skill_client',
+          required: false,
+          description: 'URL of the InferMate server (defaults to http://localhost:3000).'
+        },
+        {
+          name: 'INFERMATE_AGENT_API_KEY',
+          scope: 'client_and_server',
+          required: false,
+          description: 'Optional Bearer token protecting /api/agent/* and /api/agent/mcp.'
+        },
+        {
+          name: 'GEMINI_API_KEY',
+          scope: 'self_hosted_server',
+          required: true,
+          description: 'User-supplied Google Gemini API key required when self-hosting server.ts.'
+        },
+        {
+          name: 'HF_API_KEY',
+          scope: 'optional_hf_proxy',
+          required: false,
+          description: 'Optional user-supplied Hugging Face token for backend/app.py and huggingFaceService.ts.'
+        }
+      ],
+      network_hosts: [
+        {
+          host: 'generativelanguage.googleapis.com',
+          usedBy: 'server.ts (@google/genai)',
+          purpose: 'Google Gemini translation, OCR, embeddings, chat, and document analysis.'
+        },
+        {
+          host: 'api-inference.huggingface.co',
+          usedBy: 'backend/app.py & services/huggingFaceService.ts (optional)',
+          purpose: 'Optional Hugging Face Inference API proxy for open-source Mistral/Zephyr chat.'
+        }
       ]
     },
     mcpEndpoint: `${cleanBase}/api/agent/mcp`,
